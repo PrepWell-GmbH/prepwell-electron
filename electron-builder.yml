@@ -18,6 +18,16 @@ mac:
     - target: dmg
       arch:
         - universal   # Intel + Apple Silicon in einem Binary
+    # Das ZIP ist NICHT optional und auch kein zweiter Download-Weg fuer Nutzer:
+    # Squirrel.Mac — der Update-Mechanismus unter macOS — kann ausschliesslich
+    # ZIPs einspielen. electron-updater sucht in latest-mac.yml gezielt nach
+    # einer .zip-Datei (MacUpdater: findFile(files, "zip", ["pkg", "dmg"])) und
+    # wirft ERR_UPDATER_ZIP_FILE_NOT_FOUND, wenn dort nur ein DMG steht.
+    # Mit dmg allein laedt die App das Update also nie herunter. Das DMG bleibt
+    # fuer die Erstinstallation.
+    - target: zip
+      arch:
+        - universal
   icon: resources/icon.png  # electron-builder converts to .icns automatically
   darkModeSupport: true
   notarize: false          # afterSign hook handles notarization; prevent electron-builder auto-notarize
