@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, Menu, session, ipcMain } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import windowStateKeeper from 'electron-window-state';
 import path from 'path';
+import { setupFloatingTimer, openFloatingTimer, closeFloatingTimer } from './floating-timer';
 
 // ─── Config ─────────────────────────────────────────────
 const IS_DEV = !app.isPackaged;
@@ -47,6 +48,10 @@ function createWindow(): void {
   // Track window state (size, position)
   windowState.manage(mainWindow);
 
+  // Schwebe-Timer (ADR-0070). Muss NACH dem Hauptfenster laufen — siehe Kommentar
+  // in setupFloatingTimer(). Stufe Spike: manueller Trigger + Diagnose, keine Automatik.
+  setupFloatingTimer(mainWindow);
+
   // Show window when content is ready (no white flash)
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -67,6 +72,9 @@ function createWindow(): void {
     if (url.startsWith(APP_URL)) {
       return { action: 'allow' };
     }
+    // Hinweis: Document PiP (Schwebe-Timer, ADR-0070) läuft NICHT durch diesen
+    // Handler — im Spike wurde er bei requestWindow() kein einziges Mal
+    // aufgerufen. Es braucht hier also keine about:blank-Ausnahme.
     // Everything else → system browser
     shell.openExternal(url);
     return { action: 'deny' };
@@ -135,8 +143,29 @@ function createMenu(): void {
         { role: 'zoomOut', label: 'Verkleinern' },
         { type: 'separator' },
         { role: 'togglefullscreen', label: 'Vollbild' },
+        { type: 'separator' },
+        // Schwebe-Timer (ADR-0070) — Stufe Spike: manueller Trigger.
+        // In Stufe 2 übernimmt die Blur/Focus-Automatik; die Menüeinträge
+        // bleiben als manueller Weg bestehen.
+        {
+          label: 'Schwebe-Timer öffnen',
+          accelerator: 'CommandOrControl+Shift+F',
+          click: () => void openFloatingTimer(),
+        },
+        {
+          label: 'Schwebe-Timer schließen',
+          accelerator: 'CommandOrControl+Shift+G',
+          click: () => void closeFloatingTimer(),
+        },
         ...(IS_DEV
           ? [
+              {
+                // Umgeht den Frontend-Hook und öffnet ein eigenes PiP-Fenster.
+                // Damit ist das Schwebe-Verhalten prüfbar, ohne dass das
+                // Frontend auf :3000 laufen muss.
+                label: 'Schwebe-Timer: Roh-Test (ohne Frontend-Hook)',
+                click: () => void openFloatingTimer(true),
+              },
               { type: 'separator' as const },
               { role: 'toggleDevTools' as const, label: 'Entwicklertools' },
             ]
@@ -201,7 +230,11 @@ ipcMain.handle('open-external', async (_event, url: string) => {
 // ─── App Lifecycle ──────────────────────────────────────
 app.on('ready', () => {
   // Deny all permission requests by default (camera, microphone, geolocation, etc.)
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    // Log statt still schlucken: falls Document PiP (ADR-0070) doch eine
+    // Permission anfordert, ist der Denial sonst unsichtbar und der Spike
+    // scheitert ohne Spur.
+    console.log(`[Permissions] verweigert: ${permission}`);
     callback(false);
   });
 
