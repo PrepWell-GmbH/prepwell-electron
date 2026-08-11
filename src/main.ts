@@ -7,7 +7,13 @@ import { setupFloatingTimer, openFloatingTimer, closeFloatingTimer } from './flo
 // ─── Config ─────────────────────────────────────────────
 const IS_DEV = !app.isPackaged;
 const PROD_URL = 'https://app.prepwell.de';
-const APP_URL = IS_DEV ? 'http://localhost:3000' : PROD_URL;
+// Dev-Override, damit der Schwebe-Timer-Spike gegen den bereits in prod
+// ausgerollten Hook geprüft werden kann, ohne das Frontend auf :3000 zu starten:
+//   PREPWELL_URL=https://app.prepwell.de npm run dev
+// Bewusst nur im Dev-Modus wirksam — ein paketierter Build lässt sich damit
+// nicht umlenken, sonst wäre der Navigations-Guard über eine Umgebungsvariable
+// aushebelbar.
+const APP_URL = IS_DEV ? process.env.PREPWELL_URL || 'http://localhost:3000' : PROD_URL;
 
 // ─── Single Instance Lock ───────────────────────────────
 // Prevent multiple instances — focus existing window instead
