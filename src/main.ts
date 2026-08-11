@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, Menu, session, ipcMain } from 'electron';
+import { app, BrowserWindow, shell, Menu, session, ipcMain, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import windowStateKeeper from 'electron-window-state';
 import path from 'path';
@@ -198,26 +198,90 @@ function createMenu(): void {
 }
 
 // ─── Auto Updater ───────────────────────────────────────
+// Ein fertig geladenes Update wird dem Nutzer ANGEBOTEN, statt still beim
+// Beenden eingespielt zu werden. Der Hinweis erscheint bewusst erst nach dem
+// Download ('update-downloaded', nicht 'update-available') — sonst wartet der
+// Nutzer nach dem Klick auf ~200 MB DMG, statt sofort im neuen Stand zu landen.
+//
+// Zwei Wege für die Anzeige:
+//   1. Das Frontend rendert den Hinweis selbst (meldet sich per 'update-ui-ready').
+//   2. Meldet sich niemand, zeigt die Shell einen nativen Dialog.
+// So funktioniert das Update-Angebot auch gegen ein Frontend, das die
+// Update-UI noch nicht kennt, und auf der Offline-Seite.
+
+/** Version des heruntergeladenen Updates, sonst null. */
+let pendingUpdateVersion: string | null = null;
+/** Wird true, sobald das Frontend die Update-UI übernommen hat. */
+let rendererOwnsUpdateUi = false;
+
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // stündlich nachfassen
+/** Karenz, damit ein noch ladendes Frontend die UI übernehmen kann. */
+const RENDERER_GRACE_MS = 10_000;
+
 function setupAutoUpdater(): void {
   if (IS_DEV) return; // No auto-update in dev
 
   autoUpdater.autoDownload = true;
+  // Fallback für alle, die den Hinweis wegklicken: dann eben beim Beenden.
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on('update-available', () => {
-    console.log('[Updater] Update available — downloading...');
+  autoUpdater.on('update-available', (info) => {
+    console.log(`[Updater] Version ${info.version} verfügbar — lädt im Hintergrund...`);
   });
 
-  autoUpdater.on('update-downloaded', () => {
-    console.log('[Updater] Update downloaded — will install on quit.');
+  autoUpdater.on('update-downloaded', (info) => {
+    pendingUpdateVersion = info.version;
+    console.log(`[Updater] Version ${info.version} bereit.`);
+    announceUpdate(info.version);
   });
 
   autoUpdater.on('error', (err) => {
     console.error('[Updater] Error:', err.message);
   });
 
-  // Check for updates after launch
-  autoUpdater.checkForUpdatesAndNotify();
+  // checkForUpdates() statt checkForUpdatesAndNotify(): letzteres würde
+  // zusätzlich eine System-Benachrichtigung zeigen, und die Anzeige gehört ab
+  // jetzt uns.
+  void autoUpdater.checkForUpdates();
+  setInterval(() => void autoUpdater.checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
+}
+
+/** Meldet ein bereitliegendes Update ans Frontend — oder zeigt den nativen Dialog. */
+function announceUpdate(version: string): void {
+  if (sendToRenderer(version)) return;
+
+  // Das Update ist erst nach einem langen Download fertig, das Frontend also
+  // längst geladen. Trotzdem kurz warten, falls gerade neu geladen wird.
+  setTimeout(() => {
+    if (rendererOwnsUpdateUi && sendToRenderer(version)) return;
+    void showNativeUpdatePrompt(version);
+  }, RENDERER_GRACE_MS);
+}
+
+function sendToRenderer(version: string): boolean {
+  if (!rendererOwnsUpdateUi || !mainWindow || mainWindow.isDestroyed()) return false;
+  mainWindow.webContents.send('update-downloaded', version);
+  return true;
+}
+
+async function showNativeUpdatePrompt(version: string): Promise<void> {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    buttons: ['Jetzt aktualisieren', 'Später'],
+    defaultId: 0,
+    cancelId: 1,
+    message: 'Eine neuere Version ist vorhanden',
+    detail: `Version ${version} steht bereit. PrepWell startet dafür kurz neu.`,
+  });
+  if (response === 0) installUpdate();
+}
+
+/** Beendet die App, installiert das Update und startet neu. */
+function installUpdate(): void {
+  // isSilent=false → Installer-Fortschritt sichtbar; isForceRunAfter=true →
+  // die App kommt danach von selbst wieder hoch.
+  autoUpdater.quitAndInstall(false, true);
 }
 
 // ─── IPC Handlers ──────────────────────────────────────
@@ -231,6 +295,26 @@ ipcMain.handle('open-external', async (_event, url: string) => {
   } catch {
     // Invalid URL — silently ignore
   }
+});
+
+// update-ui-ready: Das Frontend übernimmt die Anzeige — ab jetzt kein nativer
+// Dialog mehr. Liegt schon ein Update bereit (z.B. weil es während eines
+// Reloads fertig wurde), wird es sofort nachgereicht.
+ipcMain.on('update-ui-ready', (event) => {
+  rendererOwnsUpdateUi = true;
+  if (pendingUpdateVersion) event.sender.send('update-downloaded', pendingUpdateVersion);
+});
+
+// get-pending-update: Für den Fall, dass die Komponente erst nach dem Event
+// mountet — dann fragt sie den Stand aktiv ab.
+ipcMain.handle('get-pending-update', () => pendingUpdateVersion);
+
+// install-update: Klick auf „Jetzt aktualisieren". Nur gültig, wenn wirklich
+// ein Update bereitliegt — sonst würde quitAndInstall() die App nur beenden.
+ipcMain.handle('install-update', () => {
+  if (!pendingUpdateVersion) return false;
+  installUpdate();
+  return true;
 });
 
 // ─── App Lifecycle ──────────────────────────────────────
