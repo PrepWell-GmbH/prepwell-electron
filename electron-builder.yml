@@ -62,5 +62,10 @@ nsis:
 # ─── Auto Update ─────────────────────────────────────────
 publish:
   provider: github
-  owner: FerdinandvonWaitzGitHub   # ← GitHub Org/User
+  # Muss auf die Org zeigen, in der das Repo tatsaechlich liegt: hier laedt
+  # electron-builder die Release-Assets hoch, und secrets.GITHUB_TOKEN ist auf
+  # genau dieses Repo ausgestellt. Der alte Wert (FerdinandvonWaitzGitHub) hat
+  # nur ueber GitHubs Transfer-Redirect funktioniert — eine Kruecke, die
+  # wegfaellt, sobald jemand ein Repo unter dem alten Pfad anlegt.
+  owner: PrepWell-GmbH             # ← GitHub Org/User
   repo: prepwell-electron          # ← Repo Name
