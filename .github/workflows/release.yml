@@ -23,7 +23,8 @@ jobs:
       - run: npm ci
 
       - name: Build & Package
-        timeout-minutes: 75
+        # Muss über dem 2h-Poll-Fenster von scripts/notarize.js liegen.
+        timeout-minutes: 150
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}

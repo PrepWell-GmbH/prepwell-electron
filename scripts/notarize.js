@@ -59,20 +59,37 @@ exports.default = async function notarizing(context) {
 
     console.log(`Submission ID: ${submissionId} — polling for result...`);
 
-    // Step 3: Poll every 30s, max 60 min
-    const maxAttempts = 120;
+    // Step 3: Poll every 30s, max 2h. Die allererste Notarisierung eines
+    // neuen Teams kann sehr lange dauern (Run 31580739764: nach 55 min noch
+    // "In Progress") — der Workflow-Timeout muss darüber liegen.
+    const maxAttempts = 240;
     let status = "In Progress";
+    let consecutiveErrors = 0;
 
     for (let i = 1; i <= maxAttempts; i++) {
       await sleep(30_000);
 
       console.log(`Poll ${i}/${maxAttempts}...`);
-      const infoOutput = execSync(
-        `xcrun notarytool info "${submissionId}" ${credentials} --output-format json`,
-        { encoding: "utf-8", timeout: 60_000 }
-      );
+      let infoData;
+      try {
+        const infoOutput = execSync(
+          `xcrun notarytool info "${submissionId}" ${credentials} --output-format json`,
+          { encoding: "utf-8", timeout: 60_000 }
+        );
+        infoData = JSON.parse(infoOutput);
+        consecutiveErrors = 0;
+      } catch (e) {
+        // Ein einzelner Netzwerkaussetzer des Runners darf den Build nicht
+        // killen (Run 31580739764 starb bei Poll 110/120 an NSURLErrorDomain
+        // -1009). Erst eine anhaltende Störung bricht ab.
+        consecutiveErrors++;
+        console.warn(`Poll ${i} fehlgeschlagen (${consecutiveErrors} in Folge): ${e.message}`);
+        if (consecutiveErrors >= 10) {
+          throw new Error(`Polling abgebrochen: ${consecutiveErrors} Fehler in Folge.`);
+        }
+        continue;
+      }
 
-      const infoData = JSON.parse(infoOutput);
       status = infoData.status;
       console.log(`Status: ${status}`);
 
