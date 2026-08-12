@@ -25,9 +25,11 @@ import path from 'path';
 const LOG = '[FloatingTimer]';
 const IS_DEV = !app.isPackaged;
 
-const WIDTH = 320;
-const HEIGHT = 120;
-const MARGIN = 24;
+// Karte im Look des Dashboard-FloatingWidget, kompakt. Im Fenstermaß stecken
+// 10px Rand pro Seite für den CSS-Schatten (das Fenster selbst ist transparent).
+const WIDTH = 280;
+const HEIGHT = 80;
+const MARGIN = 16;
 const POLL_MS = 1000;
 
 /** Was die Zustands-Probe aus dem Hauptfenster zurückmeldet. */
@@ -108,6 +110,8 @@ function createFloatWindow(): BrowserWindow {
     width: WIDTH,
     height: HEIGHT,
     frame: false,
+    transparent: true,
+    hasShadow: false, // Schatten kommt aus dem CSS der Karte
     resizable: false,
     minimizable: false,
     maximizable: false,

@@ -4,89 +4,90 @@
   <meta charset="utf-8" />
   <title>PrepWell Timer</title>
   <style>
-    html, body { margin: 0; height: 100%; }
-    body {
-      -webkit-app-region: drag;           /* ganzes Fenster ziehbar */
-      background: #0f172a;
-      color: #f8fafc;
-      font-family: system-ui, -apple-system, sans-serif;
+    /* Look des Dashboard-FloatingWidget (frontend floating-widget.tsx):
+       weiße Karte, rounded-14, Border #E5E5E5, Schatten 0 4px 20px 9%,
+       7px-Status-Dot, 15px/#171717 + 12px/#737373. Das Fenster ist
+       transparent; der 10px-Rand gehört dem CSS-Schatten. */
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+    #card {
+      position: absolute;
+      inset: 10px;
+      -webkit-app-region: drag;
+      background: #ffffff;
+      border: 1px solid #E5E5E5;
+      border-radius: 14px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.09);
       display: flex;
-      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 6px;
+      gap: 12px;
+      padding: 0 16px;
+      font-family: system-ui, -apple-system, sans-serif;
       user-select: none;
       cursor: default;
+    }
+    #dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #E5E5E5;               /* idle: pw-border */
+      flex-shrink: 0;
+    }
+    #card.active #dot { background: #4ade80; }  /* running: green-400 */
+    #texts { flex: 1; min-width: 0; }
+    #text {
+      font-size: 15px;
+      font-weight: 500;
+      color: #171717;                     /* pw-ink */
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
       overflow: hidden;
+      text-overflow: ellipsis;
     }
     #label {
-      font-size: 11px;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-      opacity: .55;
-    }
-    #text {
-      font-size: 34px;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-    }
-    body.idle #text {
-      font-size: 17px;
-      font-weight: 500;
-      opacity: .7;
+      font-size: 12px;
+      font-weight: 300;
+      color: #737373;                     /* pw-muted */
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     #close {
-      position: absolute;
-      top: 8px;
-      right: 10px;
       -webkit-app-region: no-drag;
       background: none;
       border: none;
-      color: inherit;
-      opacity: .4;
-      font-size: 14px;
+      color: #737373;
+      font-size: 12px;
       cursor: pointer;
-      padding: 2px 6px;
+      padding: 4px 6px;
+      opacity: 0;
+      transition: opacity .15s;
+      flex-shrink: 0;
     }
-    #close:hover { opacity: .9; }
-    #dot {
-      display: none;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #34d399;
-      animation: pulse 2s ease-in-out infinite;
-    }
-    body.active #dot { display: block; }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: .35; }
-    }
+    #card:hover #close { opacity: .6; }
+    #close:hover { opacity: 1 !important; }
   </style>
 </head>
-<body class="idle">
-  <button id="close" title="Schließen">✕</button>
-  <div id="dot"></div>
-  <div id="label">PrepWell Timer</div>
-  <div id="text">Kein Timer aktiv</div>
+<body>
+  <div id="card">
+    <div id="dot"></div>
+    <div id="texts">
+      <div id="text">Kein Timer aktiv</div>
+      <div id="label"></div>
+    </div>
+    <button id="close" title="Schließen">✕</button>
+  </div>
   <script>
     document.getElementById('close').addEventListener('click', () => window.close());
     // Wird vom Main-Prozess per executeJavaScript gefüttert (floating-timer.ts).
     window.__update = (s) => {
-      const label = document.getElementById('label');
+      const card = document.getElementById('card');
       const text = document.getElementById('text');
-      label.textContent = s.label || 'PrepWell Timer';
-      document.body.classList.toggle('active', !!s.active);
-      if (s.text) {
-        text.textContent = s.text;
-        document.body.classList.remove('idle');
-      } else if (s.active) {
-        text.textContent = 'Timer aktiv';
-        document.body.classList.remove('idle');
-      } else {
-        text.textContent = 'Kein Timer aktiv';
-        document.body.classList.add('idle');
-      }
+      const label = document.getElementById('label');
+      card.classList.toggle('active', !!s.active);
+      text.textContent = s.text || (s.active ? 'Timer läuft' : 'Kein Timer aktiv');
+      label.textContent = s.label || '';
+      label.style.display = s.label ? '' : 'none';
     };
   </script>
 </body>
