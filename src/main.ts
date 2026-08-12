@@ -149,22 +149,23 @@ function createMenu(): void {
         { role: 'zoomOut', label: 'Verkleinern' },
         { type: 'separator' },
         { role: 'togglefullscreen', label: 'Vollbild' },
-        { type: 'separator' },
-        // Schwebe-Timer (ADR-0070) — Stufe Spike: manueller Trigger.
-        // In Stufe 2 übernimmt die Blur/Focus-Automatik; die Menüeinträge
-        // bleiben als manueller Weg bestehen.
-        {
-          label: 'Schwebe-Timer öffnen',
-          accelerator: 'CommandOrControl+Shift+F',
-          click: () => void openFloatingTimer(),
-        },
-        {
-          label: 'Schwebe-Timer schließen',
-          accelerator: 'CommandOrControl+Shift+G',
-          click: () => void closeFloatingTimer(),
-        },
+        // Schwebe-Timer (ADR-0070) — Stufe Spike: nur im Dev-Lauf. In die
+        // ausgelieferte App kommen die Einträge erst mit Stufe 2, wenn das
+        // macOS-Verhalten bestätigt ist (shell#5) — ein Menüeintrag, der
+        // vielleicht nichts tut, ist schlechter als keiner.
         ...(IS_DEV
           ? [
+              { type: 'separator' as const },
+              {
+                label: 'Schwebe-Timer öffnen',
+                accelerator: 'CommandOrControl+Shift+F',
+                click: () => void openFloatingTimer(),
+              },
+              {
+                label: 'Schwebe-Timer schließen',
+                accelerator: 'CommandOrControl+Shift+G',
+                click: () => void closeFloatingTimer(),
+              },
               {
                 // Umgeht den Frontend-Hook und öffnet ein eigenes PiP-Fenster.
                 // Damit ist das Schwebe-Verhalten prüfbar, ohne dass das

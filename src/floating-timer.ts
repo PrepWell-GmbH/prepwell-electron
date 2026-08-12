@@ -40,6 +40,7 @@
 import { app, BrowserWindow } from 'electron';
 
 const LOG = '[FloatingTimer]';
+const IS_DEV = !app.isPackaged;
 
 /** Was der Renderer-Probe zurückmeldet. Landet als JSON im Main-Prozess-Log. */
 interface ProbeResult {
@@ -201,6 +202,10 @@ export function setupFloatingTimer(win: BrowserWindow): void {
     }
     created.on('closed', () => console.log(`${LOG} Fenster #${created.id} geschlossen`));
   });
+
+  // Die reine Diagnose ist Messgerüst für den Dev-Lauf (shell#5) — in der
+  // ausgelieferten App hat sie nichts verloren.
+  if (!IS_DEV) return;
 
   // Falls PiP KEIN BrowserWindow erzeugt, taucht es hier trotzdem auf. Der
   // getType()-Wert sagt uns, womit wir es in Stufe 2 zu tun haben.
