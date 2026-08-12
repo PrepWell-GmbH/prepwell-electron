@@ -149,7 +149,12 @@ function createFloatWindow(): BrowserWindow {
  */
 export async function openFloatingTimer(force = false): Promise<void> {
   const state = await readState();
-  if (!force && !state.active) return;
+  if (!force && !state.active) {
+    // Nur Dev: sichtbar machen, WARUM nichts aufgeht — fehlender Hook heißt
+    // "Setting aus oder nicht eingeloggt", active=false heißt "kein Timer".
+    if (IS_DEV) console.log(`${LOG} skip — hook=${state.hookPresent}, active=${state.active}`);
+    return;
+  }
 
   if (!floatWin || floatWin.isDestroyed()) {
     floatWin = createFloatWindow();

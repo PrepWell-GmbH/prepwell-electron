@@ -15,6 +15,14 @@ const PROD_URL = 'https://app.prepwell.de';
 // aushebelbar.
 const APP_URL = IS_DEV ? process.env.PREPWELL_URL || 'http://localhost:3000' : PROD_URL;
 
+// Dev-Lauf bekommt einen eigenen Datenordner. Sonst teilt er sich userData —
+// und damit die Single-Instance-Sperre — mit der installierten App: je nachdem,
+// wer zuerst lief, beendet sich die jeweils andere beim Start WORTLOS. Der
+// Ordner wird einmalig aus dem echten geklont, damit der Login erhalten bleibt.
+if (IS_DEV) {
+  app.setPath('userData', `${app.getPath('userData')}-dev`);
+}
+
 // ─── Single Instance Lock ───────────────────────────────
 // Prevent multiple instances — focus existing window instead
 const gotLock = app.requestSingleInstanceLock();
