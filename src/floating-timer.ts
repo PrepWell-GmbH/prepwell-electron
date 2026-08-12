@@ -46,6 +46,7 @@ const EMPTY_STATE: DisplayState = { hookPresent: false, active: false, text: nul
 let mainWindow: BrowserWindow | null = null;
 let floatWin: BrowserWindow | null = null;
 let poll: ReturnType<typeof setInterval> | null = null;
+let inactiveReads = 0;
 
 // Läuft im Renderer des Hauptfensters. Tolerant gegenüber dem heutigen Hook
 // (nur isTimerActive) und dem künftigen getDisplayState(): { active, text,
@@ -89,7 +90,24 @@ function pushState(state: DisplayState): void {
 
 function startPoll(): void {
   if (poll) return;
-  poll = setInterval(() => void readState().then(pushState), POLL_MS);
+  inactiveReads = 0;
+  poll = setInterval(
+    () =>
+      void readState().then((state) => {
+        // Hysterese: Während Navigation/Reload im Hauptfenster fehlt der Hook
+        // kurz und die Probe liefert "inaktiv". Erst drei Inaktiv-Lesungen in
+        // Folge schalten die Karte auf idle — sonst flackert sie mitten in
+        // der Session auf "Kein Timer aktiv".
+        if (state.active) {
+          inactiveReads = 0;
+        } else {
+          inactiveReads++;
+          if (inactiveReads < 3) return;
+        }
+        pushState(state);
+      }),
+    POLL_MS,
+  );
 }
 
 function stopPoll(): void {
