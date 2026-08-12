@@ -9,6 +9,7 @@ directories:
 files:
   - dist/**/*
   - resources/offline.html
+  - resources/floating-timer.html
   - package.json
 
 # ─── macOS ───────────────────────────────────────────────

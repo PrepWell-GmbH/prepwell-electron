@@ -1,233 +1,203 @@
-// Schwebe-Timer — Shell-Seite von ADR-0070 (Issue prepwell-electron#1).
+// Schwebe-Timer — Stufe 2, Plan B: natives Zweitfenster (ADR-0070-Fallback).
 //
-// STUFE: SPIKE. Hier hängt bewusst NUR der manuelle Trigger + Diagnose drin.
-// Die Automatik (Blur/Minimize öffnet, Focus/Restore schließt, showFloatingTimer,
-// Idempotenz) kommt erst, wenn am Bildschirm bestätigt ist, dass
-//   a) documentPictureInPicture.requestWindow() aus dem Shell-Trigger heraus
-//      überhaupt aufgeht (synthetische User-Gesture via executeJavaScript),
-//   b) das PiP-Fenster über ANDEREN Anwendungen schwebt,
-//   c) es das Minimieren des Hauptfensters überlebt.
-// Scheitert (b) oder (c), sagt ADR-0070: Umplanung auf natives Zweitfenster —
-// dann wäre jede vorab gebaute Automatik-Semantik Wegwerfcode.
+// Document PiP ist in Electron nicht implementiert (electron/electron#39633).
+// Auf macOS UND Linux vermessen: requestWindow() löst auf, ~3ms später feuert
+// pagehide+unload, das Fenster existiert nie sichtbar. Deshalb greift der im
+// ADR vorgesehene Fallback: ein kleines, rahmenloses BrowserWindow, das der
+// Main-Prozess selbst besitzt — Schweben ist damit garantiert statt erhofft,
+// und es funktioniert auf jeder Plattform.
 //
-// Die Fokus-/Minimize-Events werden trotzdem schon registriert, aber
-// AUSSCHLIESSLICH als Logger. Damit ist vor dem Automatik-Bau belegt, ob das
-// Event-Substrat auf der jeweiligen Plattform überhaupt trägt (auf Wayland ist
-// 'minimize' erfahrungsgemäß die wacklige Stelle).
+// Automatik: Fokus-Verlust des Hauptfensters öffnet (nur wenn ein Timer
+// aktiv ist), Fokus-Rückkehr schließt. Minimieren/Verstecken zählt als
+// Fokus-Verlust. Das Schwebe-Fenster wird mit showInactive() gezeigt und
+// stiehlt der App, zu der der Nutzer wechselt, nicht den Fokus — und weil
+// nur der 'focus' des HAUPTfensters schließt, gibt es keine Rückkopplung,
+// wenn der Nutzer das Schwebe-Fenster selbst anfasst.
 //
-// ── Messergebnisse Spike-Lauf, Electron 41.2.0, Fedora (X11 + Wayland) ──
-//  1. Die synthetische User-Gesture TRÄGT: executeJavaScript(code, true) lässt
-//     requestWindow() aufgehen, kein NotAllowedError. Das ist der Mechanismus,
-//     auf dem ADR-0070 steht — er ist damit belegt, nicht mehr nur angenommen.
-//  2. Auf Linux stirbt das PiP-Fenster sofort: requestWindow() löst nach ~20ms
-//     auf, ~1ms später feuert das Fenster pagehide + unload. Danach ist
-//     documentPictureInPicture.window dauerhaft null. Identisch unter XWayland
-//     und --ozone-platform=wayland. Video-PiP (video.requestPictureInPicture)
-//     bleibt auf derselben Maschine offen — es ist also nicht die PiP-
-//     Infrastruktur allgemein, sondern Document PiP im Speziellen.
-//     → Die ACs "schwebt über anderen Apps" und "überlebt Minimieren" sind auf
-//       Linux nicht prüfbar. Sie müssen auf macOS verifiziert werden (was zum
-//       Mac-only-Entscheid des ADRs passt).
-//  3. Das PiP-Fenster ist KEIN BrowserWindow: 'browser-window-created' feuert
-//     nicht, BrowserWindow.fromWebContents() liefert null, getAllWindows()
-//     zählt es nicht mit. Der Main-Prozess hat also keinen Griff daran und kann
-//     alwaysOnTop/Fensterlevel NICHT selbst erzwingen — das Schweben muss
-//     vollständig von Chromium kommen. Falls es auf macOS nicht von allein
-//     oben liegt, greift der ADR-Fallback (natives Zweitfenster).
-//  4. Weder setWindowOpenHandler noch der Permission-Handler werden von PiP
-//     angefasst — die restriktiven Guards in main.ts stehen nicht im Weg.
+// Der Frontend-Hook (window.__prepwellFloatingTimer) liefert nur noch den
+// Timer-Zustand. Seine open()/close()-Methoden (Document PiP) werden nicht
+// mehr aufgerufen. Kontrakt für den Anzeige-Text: getDisplayState() —
+// optional, die Shell fällt ohne ihn auf "Timer aktiv" zurück.
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, screen } from 'electron';
+import path from 'path';
 
 const LOG = '[FloatingTimer]';
 const IS_DEV = !app.isPackaged;
 
-/** Was der Renderer-Probe zurückmeldet. Landet als JSON im Main-Prozess-Log. */
-interface ProbeResult {
-  /** Welcher Weg genommen wurde: der ADR-Hook, der Roh-Fallback, oder keiner. */
-  path: 'hook' | 'raw' | 'none';
+const WIDTH = 320;
+const HEIGHT = 120;
+const MARGIN = 24;
+const POLL_MS = 1000;
+
+/** Was die Zustands-Probe aus dem Hauptfenster zurückmeldet. */
+interface DisplayState {
   hookPresent: boolean;
-  pipApiPresent: boolean;
-  /** null = Hook fehlt oder isTimerActive() hat geworfen. */
-  timerActive: boolean | null;
-  opened: boolean;
-  error: string | null;
+  active: boolean;
+  /** Anzeige-Text vom Frontend (z.B. "24:31"), sonst null. */
+  text: string | null;
+  label: string | null;
 }
+
+const EMPTY_STATE: DisplayState = { hookPresent: false, active: false, text: null, label: null };
 
 let mainWindow: BrowserWindow | null = null;
+let floatWin: BrowserWindow | null = null;
+let poll: ReturnType<typeof setInterval> | null = null;
 
-/**
- * Probe, die im Main-World des Renderers läuft.
- *
- * Bevorzugt den ADR-0070-Hook (window.__prepwellFloatingTimer). Wenn der fehlt
- * — z.B. weil die Shell gegen ein Frontend ohne das Feature läuft — öffnet der
- * Roh-Fallback ein eigenes PiP-Fenster mit sichtbarer Uhr. So ist das
- * Schwebe-Verhalten prüfbar, ohne dass das Frontend auf :3000 laufen muss.
- */
-function probeScript(allowRawFallback: boolean): string {
-  return `(async () => {
-  const out = {
-    path: 'none',
-    hookPresent: !!window.__prepwellFloatingTimer,
-    pipApiPresent: !!window.documentPictureInPicture,
-    timerActive: null,
-    opened: false,
-    error: null,
-  };
-  const isOpen = () => !!(window.documentPictureInPicture && window.documentPictureInPicture.window);
-  // requestWindow() ist async; nach open() kurz nachfassen statt sofort zu urteilen.
-  const settle = async () => {
-    for (let i = 0; i < 20; i++) {
-      if (isOpen()) return true;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    return isOpen();
-  };
+// Läuft im Renderer des Hauptfensters. Tolerant gegenüber dem heutigen Hook
+// (nur isTimerActive) und dem künftigen getDisplayState(): { active, text,
+// label } — sobald das Frontend den Getter liefert, zeigt das Fenster die
+// echte Zeit, ohne dass die Shell sich ändern muss.
+const STATE_PROBE = `(() => {
+  const hook = window.__prepwellFloatingTimer;
+  if (!hook) return { hookPresent: false, active: false, text: null, label: null };
+  let active = false;
+  try { active = !!hook.isTimerActive(); } catch (e) {}
+  let text = null, label = null;
   try {
-    const hook = window.__prepwellFloatingTimer;
-    if (hook && typeof hook.open === 'function') {
-      out.path = 'hook';
-      try { out.timerActive = hook.isTimerActive(); } catch (e) { out.timerActive = null; }
-      await hook.open();
-      out.opened = await settle();
-      return out;
+    if (typeof hook.getDisplayState === 'function') {
+      const s = hook.getDisplayState();
+      if (s) {
+        text = typeof s.text === 'string' ? s.text : null;
+        label = typeof s.label === 'string' ? s.label : null;
+        if (typeof s.active === 'boolean') active = s.active;
+      }
     }
-    if (${allowRawFallback ? 'true' : 'false'} && window.documentPictureInPicture) {
-      out.path = 'raw';
-      const pip = await window.documentPictureInPicture.requestWindow({ width: 320, height: 180 });
-      const d = pip.document;
-      d.body.style.cssText = 'margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#0f172a;color:#f8fafc;font-family:system-ui,sans-serif';
-      const label = d.createElement('div');
-      label.textContent = 'PrepWell Spike';
-      label.style.cssText = 'font-size:12px;letter-spacing:.12em;text-transform:uppercase;opacity:.6';
-      const clock = d.createElement('div');
-      clock.style.cssText = 'font-size:44px;font-weight:600;font-variant-numeric:tabular-nums';
-      d.body.append(label, clock);
-      // Laufende Uhr: belegt beim Hinsehen, dass das Fenster lebt und nicht
-      // nur ein eingefrorener Screenshot ist, wenn das Hauptfenster weg ist.
-      const started = performance.now();
-      const tick = () => {
-        const s = Math.floor((performance.now() - started) / 1000);
-        clock.textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
-      };
-      tick();
-      const iv = pip.setInterval(tick, 250);
-      pip.addEventListener('pagehide', () => pip.clearInterval(iv));
-      out.opened = true;
-      return out;
-    }
-    out.error = out.pipApiPresent ? 'Hook fehlt (Frontend ohne Feature?)' : 'documentPictureInPicture nicht verfuegbar';
-    return out;
-  } catch (e) {
-    out.error = (e && e.name ? e.name + ': ' : '') + (e && e.message ? e.message : String(e));
-    return out;
-  }
+  } catch (e) {}
+  return { hookPresent: true, active, text, label };
 })()`;
+
+async function readState(): Promise<DisplayState> {
+  if (!mainWindow || mainWindow.isDestroyed()) return EMPTY_STATE;
+  try {
+    return (await mainWindow.webContents.executeJavaScript(STATE_PROBE)) as DisplayState;
+  } catch {
+    return EMPTY_STATE;
+  }
 }
 
-const CLOSE_SCRIPT = `(() => {
-  try {
-    const hook = window.__prepwellFloatingTimer;
-    if (hook && typeof hook.close === 'function') { hook.close(); return 'hook'; }
-    if (window.documentPictureInPicture && window.documentPictureInPicture.window) {
-      window.documentPictureInPicture.window.close();
-      return 'raw';
-    }
-    return 'none';
-  } catch (e) { return 'error: ' + (e && e.message ? e.message : String(e)); }
-})()`;
+function pushState(state: DisplayState): void {
+  if (!floatWin || floatWin.isDestroyed()) return;
+  const payload = JSON.stringify(state);
+  void floatWin.webContents
+    .executeJavaScript(`window.__update && window.__update(${payload})`)
+    .catch(() => {});
+}
+
+function startPoll(): void {
+  if (poll) return;
+  poll = setInterval(() => void readState().then(pushState), POLL_MS);
+}
+
+function stopPoll(): void {
+  if (poll) {
+    clearInterval(poll);
+    poll = null;
+  }
+}
+
+function createFloatWindow(): BrowserWindow {
+  // Oben rechts auf dem Bildschirm, auf dem der Nutzer gerade arbeitet.
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const { x, y, width } = display.workArea;
+
+  const win = new BrowserWindow({
+    x: x + width - WIDTH - MARGIN,
+    y: y + MARGIN,
+    width: WIDTH,
+    height: HEIGHT,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  // 'screen-saver' ist die Stufe, die auf macOS auch über Vollbild-Apps liegt.
+  win.setAlwaysOnTop(true, 'screen-saver');
+  if (process.platform === 'darwin') {
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+
+  void win.loadFile(path.join(__dirname, '..', 'resources', 'floating-timer.html'));
+  win.webContents.on('did-finish-load', () => void readState().then(pushState));
+  // showInactive: sichtbar werden, ohne der Ziel-App den Fokus zu stehlen.
+  win.once('ready-to-show', () => win.showInactive());
+  win.on('closed', () => {
+    floatWin = null;
+    stopPoll();
+  });
+  return win;
+}
 
 /**
  * Öffnet den Schwebe-Timer.
  *
- * Der zweite Parameter von executeJavaScript ist der springende Punkt des
- * ganzen ADRs: er stellt die synthetische User-Gesture bereit, ohne die
- * Chromium requestWindow() mit NotAllowedError abweist.
+ * @param force true = manueller Aufruf (Menü): öffnet auch ohne aktiven
+ *              Timer und zeigt die Idle-Card. Die Automatik ruft ohne force
+ *              und öffnet nur, wenn das Frontend einen aktiven Timer meldet —
+ *              sonst würde bei jedem App-Wechsel ein Fenster aufpoppen.
  */
-export async function openFloatingTimer(allowRawFallback = false): Promise<void> {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  try {
-    const result: ProbeResult = await mainWindow.webContents.executeJavaScript(
-      probeScript(allowRawFallback),
-      true, // userGesture
-    );
-    console.log(`${LOG} open →`, JSON.stringify(result));
-  } catch (err) {
-    console.error(`${LOG} open → executeJavaScript hat geworfen:`, err);
+export async function openFloatingTimer(force = false): Promise<void> {
+  const state = await readState();
+  if (!force && !state.active) return;
+
+  if (!floatWin || floatWin.isDestroyed()) {
+    floatWin = createFloatWindow();
+    if (IS_DEV) {
+      console.log(
+        `${LOG} open → Zweitfenster #${floatWin.id} (hook=${state.hookPresent}, active=${state.active}, force=${force})`,
+      );
+    }
   }
+  pushState(state);
+  startPoll();
 }
 
 export async function closeFloatingTimer(): Promise<void> {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  try {
-    const via = await mainWindow.webContents.executeJavaScript(CLOSE_SCRIPT, true);
-    console.log(`${LOG} close → ${via}`);
-  } catch (err) {
-    console.error(`${LOG} close → executeJavaScript hat geworfen:`, err);
+  stopPoll();
+  if (floatWin && !floatWin.isDestroyed()) {
+    if (IS_DEV) console.log(`${LOG} close → Zweitfenster #${floatWin.id}`);
+    floatWin.close();
   }
-}
-
-/** Zählt die Fenster, die nach dem Hauptfenster aufgemacht wurden (PiP-Kandidaten). */
-function describeExtraWindows(): string {
-  const extras = BrowserWindow.getAllWindows().filter((w) => w.id !== mainWindow?.id);
-  if (extras.length === 0) return 'keine Zusatzfenster';
-  return extras
-    .map((w) => `#${w.id} visible=${w.isVisible()} alwaysOnTop=${w.isAlwaysOnTop()}`)
-    .join(', ');
+  floatWin = null;
 }
 
 /**
- * Registriert Diagnose-Listener und meldet das Hauptfenster an.
- *
- * MUSS nach dem Erzeugen des Hauptfensters aufgerufen werden: der
- * 'browser-window-created'-Listener wird erst hier gesetzt, damit er das
- * Hauptfenster selbst gar nicht erst zu sehen bekommt und jedes gemeldete
- * Fenster ein echter PiP-Kandidat ist.
+ * Meldet das Hauptfenster an und verdrahtet die Automatik.
+ * MUSS nach dem Erzeugen des Hauptfensters aufgerufen werden.
  */
 export function setupFloatingTimer(win: BrowserWindow): void {
   mainWindow = win;
 
-  // Auf Linux feuert das für PiP NICHT (siehe Befund 3 oben). Bleibt drin, weil
-  // die macOS-Verifikation noch aussteht: feuert es dort, wollen wir es sehen
-  // und das Fenster gleich nach oben zwingen.
-  app.on('browser-window-created', (_event, created) => {
-    if (created.id === mainWindow?.id) return;
-    console.log(
-      `${LOG} Fenster #${created.id} erzeugt — alwaysOnTop vor Eingriff: ${created.isAlwaysOnTop()}`,
-    );
-    // 'screen-saver' ist die Stufe, die auf macOS auch über Vollbild-Apps liegt.
-    created.setAlwaysOnTop(true, 'screen-saver');
-    if (process.platform === 'darwin') {
-      created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    }
-    created.on('closed', () => console.log(`${LOG} Fenster #${created.id} geschlossen`));
+  // Stufe-2-Automatik. 'blur' feuert auch, wenn der Nutzer das Schwebe-
+  // Fenster selbst anklickt — openFloatingTimer ist idempotent, das ist ok.
+  win.on('blur', () => void openFloatingTimer());
+  win.on('minimize', () => void openFloatingTimer());
+  win.on('hide', () => void openFloatingTimer());
+  win.on('focus', () => void closeFloatingTimer());
+  win.on('closed', () => {
+    mainWindow = null;
+    void closeFloatingTimer();
   });
 
-  // Die reine Diagnose ist Messgerüst für den Dev-Lauf (shell#5) — in der
-  // ausgelieferten App hat sie nichts verloren.
   if (!IS_DEV) return;
 
-  // Falls PiP KEIN BrowserWindow erzeugt, taucht es hier trotzdem auf. Der
-  // getType()-Wert sagt uns, womit wir es in Stufe 2 zu tun haben.
-  app.on('web-contents-created', (_event, contents) => {
-    if (contents === mainWindow?.webContents) return;
-    const attached = BrowserWindow.fromWebContents(contents);
-    console.log(
-      `${LOG} webContents erzeugt — type=${contents.getType()} url=${contents.getURL() || '(leer)'} ` +
-        `browserWindow=${attached ? '#' + attached.id : 'keins'}`,
-    );
-  });
-
-  // NUR Logging. Hier hängt in Stufe 2 die Automatik dran — vorher wollen wir
-  // wissen, ob die Events auf der Zielplattform sauber und einzeln feuern.
-  const logEvent = (event: string) => () => {
-    console.log(`${LOG} [event] ${event} — ${describeExtraWindows()}`);
-  };
-
-  win.on('blur', logEvent('blur'));
-  win.on('focus', logEvent('focus'));
-  win.on('minimize', logEvent('minimize'));
-  win.on('restore', logEvent('restore'));
-  win.on('hide', logEvent('hide'));
-  win.on('show', logEvent('show'));
+  // Dev-Diagnose: Event-Protokoll für die Verifikation am Bildschirm.
+  for (const event of ['blur', 'focus', 'minimize', 'restore', 'hide', 'show']) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (win as any).on(event, () => {
+      const f = floatWin && !floatWin.isDestroyed() ? `#${floatWin.id} visible=${floatWin.isVisible()}` : 'zu';
+      console.log(`${LOG} [event] ${event} — Schwebe-Fenster: ${f}`);
+    });
+  }
 }

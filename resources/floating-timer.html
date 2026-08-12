@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>PrepWell Timer</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body {
+      -webkit-app-region: drag;           /* ganzes Fenster ziehbar */
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      user-select: none;
+      cursor: default;
+      overflow: hidden;
+    }
+    #label {
+      font-size: 11px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      opacity: .55;
+    }
+    #text {
+      font-size: 34px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    body.idle #text {
+      font-size: 17px;
+      font-weight: 500;
+      opacity: .7;
+    }
+    #close {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: inherit;
+      opacity: .4;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 6px;
+    }
+    #close:hover { opacity: .9; }
+    #dot {
+      display: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #34d399;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    body.active #dot { display: block; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .35; }
+    }
+  </style>
+</head>
+<body class="idle">
+  <button id="close" title="Schließen">✕</button>
+  <div id="dot"></div>
+  <div id="label">PrepWell Timer</div>
+  <div id="text">Kein Timer aktiv</div>
+  <script>
+    document.getElementById('close').addEventListener('click', () => window.close());
+    // Wird vom Main-Prozess per executeJavaScript gefüttert (floating-timer.ts).
+    window.__update = (s) => {
+      const label = document.getElementById('label');
+      const text = document.getElementById('text');
+      label.textContent = s.label || 'PrepWell Timer';
+      document.body.classList.toggle('active', !!s.active);
+      if (s.text) {
+        text.textContent = s.text;
+        document.body.classList.remove('idle');
+      } else if (s.active) {
+        text.textContent = 'Timer aktiv';
+        document.body.classList.remove('idle');
+      } else {
+        text.textContent = 'Kein Timer aktiv';
+        document.body.classList.add('idle');
+      }
+    };
+  </script>
+</body>
+</html>

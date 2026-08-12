@@ -54,8 +54,9 @@ function createWindow(): void {
   // Track window state (size, position)
   windowState.manage(mainWindow);
 
-  // Schwebe-Timer (ADR-0070). Muss NACH dem Hauptfenster laufen — siehe Kommentar
-  // in setupFloatingTimer(). Stufe Spike: manueller Trigger + Diagnose, keine Automatik.
+  // Schwebe-Timer (ADR-0070, Stufe 2 auf dem Fallback-Pfad: natives
+  // Zweitfenster statt Document PiP). Verdrahtet die Blur/Focus-Automatik —
+  // muss NACH dem Erzeugen des Hauptfensters laufen.
   setupFloatingTimer(mainWindow);
 
   // Show window when content is ready (no white flash)
@@ -157,21 +158,16 @@ function createMenu(): void {
           ? [
               { type: 'separator' as const },
               {
+                // force=true: manueller Aufruf öffnet auch ohne aktiven
+                // Timer (Idle-Card) — so ist das Schweben ohne Login prüfbar.
                 label: 'Schwebe-Timer öffnen',
                 accelerator: 'CommandOrControl+Shift+F',
-                click: () => void openFloatingTimer(),
+                click: () => void openFloatingTimer(true),
               },
               {
                 label: 'Schwebe-Timer schließen',
                 accelerator: 'CommandOrControl+Shift+G',
                 click: () => void closeFloatingTimer(),
-              },
-              {
-                // Umgeht den Frontend-Hook und öffnet ein eigenes PiP-Fenster.
-                // Damit ist das Schwebe-Verhalten prüfbar, ohne dass das
-                // Frontend auf :3000 laufen muss.
-                label: 'Schwebe-Timer: Roh-Test (ohne Frontend-Hook)',
-                click: () => void openFloatingTimer(true),
               },
               { type: 'separator' as const },
               { role: 'toggleDevTools' as const, label: 'Entwicklertools' },
