@@ -1,5 +1,5 @@
 // Timer in der Mac-Menüleiste (D-47): Symbol rechts oben, daneben die Restzeit, solange ein Timer läuft.
-// Klick öffnet darunter ein kleines Fenster: Restzeit und Phase, Pause/Weiter/Beenden, Timer starten, PrepWell öffnen.
+// Klick öffnet darunter ein kleines Fenster: Restzeit und Phase, Pause/Weiter/Beenden, Timer starten, „Anpassen“ (App mit Timer-Fenster).
 
 import { Tray, nativeImage, screen, type BrowserWindow } from 'electron';
 import path from 'path';

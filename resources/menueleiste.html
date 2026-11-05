@@ -31,8 +31,8 @@
     button.haupt { background: #171717; border-color: #171717; color: #fff; }
     button.haupt:hover { background: #333; }
     button:focus-visible { outline: none; box-shadow: 0 0 0 3px #E5E5E5; }
-    #oeffnen { border: none; background: none; color: #737373; font-size: 12px; padding: 2px 0 0; flex: none; align-self: center; }
-    #oeffnen:hover { color: #171717; background: none; }
+    #anpassen { border: none; background: none; color: #737373; font-size: 12px; padding: 2px 0 0; flex: none; align-self: center; }
+    #anpassen:hover { color: #171717; background: none; }
     .leer #lauf, .leer #steuerung { display: none; }
     #start { display: none; }
     .leer #start { display: flex; }
@@ -58,7 +58,7 @@
       <button data-befehl="start-countdown">Countdown</button>
       <button data-befehl="start-stoppuhr">Stoppuhr</button>
     </div>
-    <button id="oeffnen">PrepWell öffnen</button>
+    <button id="anpassen">Anpassen</button>
   </div>
   <script>
     const MODUS = { pomodoro: 'Pomodoro', countdown: 'Countdown', stoppuhr: 'Stoppuhr' };
@@ -87,7 +87,8 @@
     for (const knopf of document.querySelectorAll('[data-befehl]')) {
       knopf.addEventListener('click', () => window.prepwellTimer.befehl(knopf.dataset.befehl));
     }
-    $('oeffnen').addEventListener('click', () => { window.prepwellTimer.appOeffnen(); window.prepwellTimer.schliessen(); });
+    // „Anpassen“: App nach vorn mit offenem Timer-Fenster (Einstellungen, Restzeit, Logbuch).
+    $('anpassen').addEventListener('click', () => { window.prepwellTimer.befehl('timer-oeffnen'); window.prepwellTimer.schliessen(); });
   </script>
 </body>
 </html>
