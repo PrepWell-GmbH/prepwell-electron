@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <title>PrepWell Timer</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+    #karte {
+      position: absolute; top: 10px; left: 10px; right: 10px; box-sizing: border-box; -webkit-app-region: drag;
+      background: #fff; border: 1px solid #E5E5E5; border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.14);
+      padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;
+      font-family: system-ui, -apple-system, sans-serif; color: #171717; user-select: none; cursor: default;
+    }
+    .kopf { font-size: 12px; color: #737373; display: flex; align-items: center; gap: 8px; }
+    .kopf span { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; }
+    #titel { font-size: 20px; font-weight: 400; letter-spacing: -.01em; }
+    #text { font-size: 13px; font-weight: 300; color: #525252; padding-bottom: 8px; }
+    .knoepfe { display: flex; gap: 8px; justify-content: flex-end; -webkit-app-region: no-drag; }
+    button {
+      font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+      border: 1px solid #E5E5E5; background: #fff; color: #171717;
+    }
+    button:hover { background: #F5F5F5; }
+    button.haupt { background: #171717; border-color: #171717; color: #fff; }
+    button.haupt:hover { background: #333; }
+    button:focus-visible { outline: none; box-shadow: 0 0 0 3px #E5E5E5; }
+    #starten { display: none; }
+  </style>
+</head>
+<body>
+  <div id="karte" role="alertdialog" aria-labelledby="titel" aria-describedby="text">
+    <div class="kopf"><span></span>PrepWell Timer</div>
+    <div id="titel"></div>
+    <div id="text"></div>
+    <div class="knoepfe">
+      <button id="oeffnen">PrepWell öffnen</button>
+      <button id="starten" class="haupt">Starten</button>
+      <button id="ok" class="haupt">OK</button>
+    </div>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    window.prepwellTimer.aufDaten((a) => {
+      if (!a) return;
+      $('titel').textContent = a.titel;
+      $('text').textContent = a.text;
+      $('starten').style.display = a.wartet ? '' : 'none';
+      $('ok').className = a.wartet ? '' : 'haupt';
+      $('ok').textContent = a.wartet ? 'Später' : 'OK';
+      requestAnimationFrame(() => window.prepwellTimer.hoehe(document.getElementById('karte').offsetHeight + 24));
+    });
+    $('ok').addEventListener('click', () => window.prepwellTimer.schliessen());
+    $('starten').addEventListener('click', () => { window.prepwellTimer.befehl('weiter'); window.prepwellTimer.schliessen(); });
+    $('oeffnen').addEventListener('click', () => { window.prepwellTimer.appOeffnen(); window.prepwellTimer.schliessen(); });
+  </script>
+</body>
+</html>

@@ -10,6 +10,10 @@ files:
   - dist/**/*
   - resources/offline.html
   - resources/floating-timer.html
+  - resources/menueleiste.html
+  - resources/ablauf.html
+  - resources/trayTemplate.png
+  - resources/trayTemplate@2x.png
   - package.json
 
 # ─── macOS ───────────────────────────────────────────────

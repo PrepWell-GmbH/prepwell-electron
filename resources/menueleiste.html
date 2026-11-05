@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <title>PrepWell Timer</title>
+  <style>
+    /* Look wie floating-timer.html (Dashboard-FloatingWidget): weiße Karte, Rand #E5E5E5, 14er Radius, Schatten im 10px-Rand. */
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+    #karte {
+      position: absolute; top: 10px; left: 10px; right: 10px; box-sizing: border-box;
+      background: #fff; border: 1px solid #E5E5E5; border-radius: 14px; box-shadow: 0 4px 20px rgba(0,0,0,.09);
+      padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+      font-family: system-ui, -apple-system, sans-serif; color: #171717; user-select: none; cursor: default;
+    }
+    .kopf { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #737373; }
+    #punkt { width: 7px; height: 7px; border-radius: 50%; background: #E5E5E5; flex-shrink: 0; }
+    .laeuft #punkt { background: #4ade80; }
+    .pausiert #punkt { background: #fbbf24; }
+    #zeit { font-size: 26px; font-weight: 300; font-variant-numeric: tabular-nums; letter-spacing: -.01em; line-height: 1.1; }
+    #label { font-size: 12px; font-weight: 300; color: #737373; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #balken { height: 4px; border-radius: 2px; background: #F5F5F5; overflow: hidden; }
+    #balken > div { height: 100%; width: 0; background: #171717; transition: width .3s; }
+    .knoepfe { display: flex; gap: 6px; }
+    #start button { padding: 7px 4px; font-size: 12.5px; }
+    button {
+      flex: 1; font: inherit; font-size: 13px; padding: 7px 8px; border-radius: 8px; cursor: pointer;
+      border: 1px solid #E5E5E5; background: #fff; color: #171717;
+    }
+    button:hover { background: #F5F5F5; }
+    button.haupt { background: #171717; border-color: #171717; color: #fff; }
+    button.haupt:hover { background: #333; }
+    button:focus-visible { outline: none; box-shadow: 0 0 0 3px #E5E5E5; }
+    #oeffnen { border: none; background: none; color: #737373; font-size: 12px; padding: 2px 0 0; flex: none; align-self: center; }
+    #oeffnen:hover { color: #171717; background: none; }
+    .leer #lauf, .leer #steuerung { display: none; }
+    #start { display: none; }
+    .leer #start { display: flex; }
+    #starttitel { display: none; font-size: 13px; color: #737373; }
+    .leer #starttitel { display: block; }
+  </style>
+</head>
+<body>
+  <div id="karte" class="leer">
+    <div class="kopf"><div id="punkt"></div><span id="modus">PrepWell Timer</span></div>
+    <div id="lauf">
+      <div id="zeit">–</div>
+      <div id="label"></div>
+    </div>
+    <div id="balken"><div></div></div>
+    <div id="starttitel">Kein Timer aktiv — starte einen:</div>
+    <div class="knoepfe" id="steuerung">
+      <button id="pause-weiter" class="haupt">Pause</button>
+      <button id="beenden">Beenden</button>
+    </div>
+    <div class="knoepfe" id="start">
+      <button data-befehl="start-pomodoro">Pomodoro</button>
+      <button data-befehl="start-countdown">Countdown</button>
+      <button data-befehl="start-stoppuhr">Stoppuhr</button>
+    </div>
+    <button id="oeffnen">PrepWell öffnen</button>
+  </div>
+  <script>
+    const MODUS = { pomodoro: 'Pomodoro', countdown: 'Countdown', stoppuhr: 'Stoppuhr' };
+    const $ = (id) => document.getElementById(id);
+    let pausiert = false;
+
+    function zeige(s) {
+      const karte = $('karte');
+      const aktiv = !!(s && s.aktiv);
+      pausiert = aktiv && !!s.pausiert;
+      karte.className = aktiv ? (pausiert ? 'pausiert' : 'laeuft') : 'leer';
+      const phase = aktiv && s.modus === 'pomodoro' ? (s.pause ? ' · Pause' : ' · Fokus') : '';
+      $('modus').textContent = aktiv ? (MODUS[s.modus] || 'Timer') + phase + (pausiert ? ' · pausiert' : '') : 'PrepWell Timer';
+      $('zeit').textContent = aktiv ? (s.text || '–') : '';
+      $('label').textContent = aktiv ? (s.label || '') : '';
+      $('balken').firstElementChild.style.width = aktiv ? Math.round((s.fortschritt || 0) * 100) + '%' : '0';
+      $('balken').style.visibility = aktiv && s.modus !== 'stoppuhr' ? 'visible' : 'hidden';
+      $('pause-weiter').textContent = pausiert ? 'Weiter' : 'Pause';
+      // Fenster so hoch wie die Karte (+ 20px Rand für den Schatten).
+      requestAnimationFrame(() => window.prepwellTimer.hoehe(karte.offsetHeight + 20));
+    }
+
+    window.prepwellTimer.aufDaten(zeige);
+    $('pause-weiter').addEventListener('click', () => window.prepwellTimer.befehl(pausiert ? 'weiter' : 'pause'));
+    $('beenden').addEventListener('click', () => window.prepwellTimer.befehl('beenden'));
+    for (const knopf of document.querySelectorAll('[data-befehl]')) {
+      knopf.addEventListener('click', () => window.prepwellTimer.befehl(knopf.dataset.befehl));
+    }
+    $('oeffnen').addEventListener('click', () => { window.prepwellTimer.appOeffnen(); window.prepwellTimer.schliessen(); });
+  </script>
+</body>
+</html>

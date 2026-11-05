@@ -47,6 +47,8 @@ let mainWindow: BrowserWindow | null = null;
 let floatWin: BrowserWindow | null = null;
 let poll: ReturnType<typeof setInterval> | null = null;
 let inactiveReads = 0;
+// Solange das Menüleisten-Fenster offen ist (D-47), bleibt die Karte zu — sie läge rechts oben genau darüber.
+let gesperrt = false;
 
 // Läuft im Renderer des Hauptfensters. Tolerant gegenüber dem heutigen Hook
 // (nur isTimerActive) und dem künftigen getDisplayState(): { active, text,
@@ -170,7 +172,9 @@ function createFloatWindow(): BrowserWindow {
  *              sonst würde bei jedem App-Wechsel ein Fenster aufpoppen.
  */
 export async function openFloatingTimer(force = false): Promise<void> {
+  if (!force && gesperrt) return;
   const state = await readState();
+  if (!force && gesperrt) return;
   if (!force && !state.active) {
     // Nur Dev: sichtbar machen, WARUM nichts aufgeht — fehlender Hook heißt
     // "Setting aus oder nicht eingeloggt", active=false heißt "kein Timer".
@@ -188,6 +192,12 @@ export async function openFloatingTimer(force = false): Promise<void> {
   }
   pushState(state);
   startPoll();
+}
+
+/** Menüleisten-Fenster offen: Schwebe-Timer zu und gesperrt; wieder zu: Automatik wie vorher. */
+export function sperreSchwebeTimer(an: boolean): void {
+  gesperrt = an;
+  if (an) void closeFloatingTimer();
 }
 
 export async function closeFloatingTimer(): Promise<void> {

@@ -3,6 +3,10 @@ import { autoUpdater } from 'electron-updater';
 import windowStateKeeper from 'electron-window-state';
 import path from 'path';
 import { setupFloatingTimer, openFloatingTimer, closeFloatingTimer } from './floating-timer';
+import { starteTimerBruecke } from './timer-bruecke';
+import { registriereTimerIpc } from './timer-fenster';
+import { setupMenueleiste, umschalten as menueleistenFenster } from './menueleiste';
+import { setupAblaufFenster } from './ablauf-fenster';
 
 // ─── Config ─────────────────────────────────────────────
 const IS_DEV = !app.isPackaged;
@@ -66,6 +70,8 @@ function createWindow(): void {
   // Zweitfenster statt Document PiP). Verdrahtet die Blur/Focus-Automatik —
   // muss NACH dem Erzeugen des Hauptfensters laufen.
   setupFloatingTimer(mainWindow);
+  // Menüleiste (D-47) und Ablauf-Fenster (D-46) lesen den Timer-Stand über diese Brücke.
+  starteTimerBruecke(mainWindow);
 
   // Show window when content is ready (no white flash)
   mainWindow.once('ready-to-show', () => {
@@ -109,6 +115,18 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+/** Hauptfenster nach vorn — aus Menüleiste und Ablauf-Fenster („PrepWell öffnen"). */
+function holeAppNachVorn(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  app.focus({ steal: true });
 }
 
 // ─── App Menu ───────────────────────────────────────────
@@ -176,6 +194,12 @@ function createMenu(): void {
                 label: 'Schwebe-Timer schließen',
                 accelerator: 'CommandOrControl+Shift+G',
                 click: () => void closeFloatingTimer(),
+              },
+              {
+                // Wie ein Klick auf das Menüleisten-Symbol (D-47) — für Prüfläufe ohne Maus auf der Leiste.
+                id: 'menueleisten-timer',
+                label: 'Menüleisten-Timer öffnen',
+                click: () => menueleistenFenster(),
               },
               { type: 'separator' as const },
               { role: 'toggleDevTools' as const, label: 'Entwicklertools' },
@@ -354,6 +378,9 @@ app.on('ready', () => {
 
   createMenu();
   createWindow();
+  registriereTimerIpc(holeAppNachVorn);
+  setupMenueleiste();
+  setupAblaufFenster();
   setupAutoUpdater();
 });
 
