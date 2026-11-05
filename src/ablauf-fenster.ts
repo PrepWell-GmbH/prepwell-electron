@@ -1,7 +1,8 @@
 // Fenster vorn, wenn der Timer abläuft (D-46): Fokuszeit oder Pause vorbei, Pomodoro geschafft, Countdown abgelaufen.
-// Es liegt über allen Fenstern (auch Vollbild) und bleibt stehen, bis man es wegklickt. Jeder Ablauf erscheint genau einmal (Nummer der Web-App).
+// Es liegt über allen Fenstern (auch Vollbild) und bleibt stehen, bis man es wegklickt. Jeder Ablauf erscheint genau einmal (Zeitpunkt der Web-App).
+// KEINE TÖNE (Lucas 2026-11-05, Frontend ADR-0138): kein beep, keine Wiedergabe — auch nicht abschaltbar eingebaut.
 
-import { app, screen, shell, type BrowserWindow } from 'electron';
+import { app, screen, type BrowserWindow } from 'electron';
 import { aufStand, type Ablauf } from './timer-bruecke';
 import { kleinesFenster, sende } from './timer-fenster';
 
@@ -34,7 +35,6 @@ function zeige(ablauf: Ablauf): void {
     sende(fenster, ablauf);
     fenster.showInactive();
   }
-  shell.beep();
   if (process.platform === 'darwin') app.dock?.bounce('informational');
 }
 
