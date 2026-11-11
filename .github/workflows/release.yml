@@ -11,7 +11,13 @@ permissions:
 jobs:
   build-mac:
     name: Build macOS
-    runs-on: macos-latest
+    # Bewusst NICHT macos-latest: seit das auf macOS 26 zeigt, scheitert das
+    # Signieren (Run 42996301240, "SecKeychainUnlock: passphrase not correct").
+    # electron-builder 25.1.8 uebergibt an `security set-key-partition-list -k`
+    # das .p12-Passwort statt des Passworts seines temporaeren Schluesselbunds;
+    # macOS 15 laesst das durch, macOS 26 prueft es. Behoben ab
+    # electron-builder 26.16.1 — nach dem Upgrade wieder auf macos-latest.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
