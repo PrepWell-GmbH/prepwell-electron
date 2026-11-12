@@ -1,30 +1,19 @@
 {
   "name": "prepwell-desktop",
   "version": "1.0.14",
-  "description": "PrepWell Desktop App — Electron Shell",
-  "main": "dist/main.js",
+  "description": "PrepWell Desktop App — Tauri-Shell (macOS)",
   "private": true,
   "scripts": {
-    "dev": "tsc && electron .",
-    "build": "tsc",
-    "pack": "tsc && electron-builder --dir",
-    "dist:mac": "tsc && electron-builder --mac",
-    "dist:win": "tsc && electron-builder --win",
-    "dist:all": "tsc && electron-builder --mac --win"
+    "dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "build": "tauri build",
+    "dist:mac": "tauri build --target universal-apple-darwin",
+    "icons": "tauri icon src-tauri/icons/icon.png"
   },
   "author": {
     "name": "PrepWell",
     "email": "info@prepwell.de"
   },
-  "dependencies": {
-    "electron-updater": "^6.3.9",
-    "electron-window-state": "^5.0.3"
-  },
   "devDependencies": {
-    "@electron/fuses": "^2.1.1",
-    "@electron/notarize": "^3.1.1",
-    "electron": "^41.2.0",
-    "electron-builder": "^25.1.8",
-    "typescript": "^5.7.3"
+    "@tauri-apps/cli": "^2"
   }
 }

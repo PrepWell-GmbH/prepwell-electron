@@ -1,0 +1,6 @@
+{
+  "identifier": "de.prepwell.desktop.dev",
+  "bundle": {
+    "createUpdaterArtifacts": false
+  }
+}

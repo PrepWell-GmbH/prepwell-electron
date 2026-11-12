@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "haupt",
+  "description": "Hauptfenster: die Web-App (app.prepwell.de) darf genau die vier Befehle der electronAPI rufen — sonst nichts. Im Dev-Lauf kommt die Dev-Adresse zur Laufzeit dazu (haupt.rs).",
+  "windows": ["haupt"],
+  "remote": {
+    "urls": ["https://app.prepwell.de/*"]
+  },
+  "permissions": [
+    "allow-open-external",
+    "allow-update-ui-ready",
+    "allow-get-pending-update",
+    "allow-install-update"
+  ]
+}

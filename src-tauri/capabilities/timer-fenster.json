@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "timer-fenster",
+  "description": "Kleine Timer-Fenster (Menüleiste, Ablauf, Schwebe-Timer): nur Stand empfangen und Timer-Befehle schicken. Nur für die mitgelieferten lokalen Seiten.",
+  "windows": ["menueleiste", "ablauf", "schwebe"],
+  "permissions": [
+    "allow-timer-fenster-bereit",
+    "allow-timer-befehl",
+    "allow-app-oeffnen",
+    "allow-timer-fenster-hoehe",
+    "allow-timer-fenster-schliessen",
+    "allow-fenster-ziehen"
+  ]
+}

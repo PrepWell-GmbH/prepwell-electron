@@ -2,12 +2,12 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src ipc: http://ipc.localhost" />
   <title>PrepWell Timer</title>
   <style>
     html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
     #karte {
-      position: absolute; top: 10px; left: 10px; right: 10px; box-sizing: border-box; -webkit-app-region: drag;
+      position: absolute; top: 10px; left: 10px; right: 10px; box-sizing: border-box;
       background: #fff; border: 1px solid #E5E5E5; border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.14);
       padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;
       font-family: system-ui, -apple-system, sans-serif; color: #171717; user-select: none; cursor: default;
@@ -16,7 +16,7 @@
     .kopf span { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; }
     #titel { font-size: 20px; font-weight: 400; letter-spacing: -.01em; }
     #text { font-size: 13px; font-weight: 300; color: #525252; padding-bottom: 8px; }
-    .knoepfe { display: flex; gap: 8px; justify-content: flex-end; -webkit-app-region: no-drag; }
+    .knoepfe { display: flex; gap: 8px; justify-content: flex-end; }
     button {
       font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 8px; cursor: pointer;
       border: 1px solid #E5E5E5; background: #fff; color: #171717;
@@ -29,7 +29,7 @@
   </style>
 </head>
 <body>
-  <div id="karte" role="alertdialog" aria-labelledby="titel" aria-describedby="text">
+  <div id="karte" data-ziehen role="alertdialog" aria-labelledby="titel" aria-describedby="text">
     <div class="kopf"><span></span>PrepWell Timer</div>
     <div id="titel"></div>
     <div id="text"></div>

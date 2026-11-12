@@ -11,12 +11,7 @@ permissions:
 jobs:
   build-mac:
     name: Build macOS
-    # Bewusst NICHT macos-latest: seit das auf macOS 26 zeigt, scheitert das
-    # Signieren (Run 42996301240, "SecKeychainUnlock: passphrase not correct").
-    # electron-builder 25.1.8 uebergibt an `security set-key-partition-list -k`
-    # das .p12-Passwort statt des Passworts seines temporaeren Schluesselbunds;
-    # macOS 15 laesst das durch, macOS 26 prueft es. Behoben ab
-    # electron-builder 26.16.1 — nach dem Upgrade wieder auf macos-latest.
+    # Festgesetzt statt macos-latest: auf macos-15 ist das Signieren mit unserem Zertifikat erprobt.
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -26,53 +21,69 @@ jobs:
           node-version: 22
           cache: npm
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Universal-Binary: Intel + Apple Silicon in einer App
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - run: npm ci
 
-      - name: Build & Package
-        # Muss über dem 2h-Poll-Fenster von scripts/notarize.js liegen.
+      - name: Signier-Zertifikat in einen eigenen Schlüsselbund laden
+        env:
+          MAC_CERTIFICATE_P12_BASE64: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
+          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "$MAC_CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/zertifikat.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/zertifikat.p12" -k "$KEYCHAIN" -P "$MAC_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # Das Passwort des Schlüsselbunds, nicht das der .p12 — sonst scheitert das Signieren ab macOS 26.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/zertifikat.p12"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep 'Developer ID Application' | head -1 | awk -F'"' '{print $2}')"
+          if [ -z "$IDENTITY" ]; then echo "Kein 'Developer ID Application'-Zertifikat im Schlüsselbund gefunden"; exit 1; fi
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Build, Signieren, Notarisieren
+        # Tauri wartet auf Apples Notarisierung; die kann sich hinziehen.
         timeout-minutes: 150
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Schlüssel, mit dem Updates signiert werden (Gegenstück zu plugins.updater.pubkey in tauri.conf.json).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run dist:mac
+
+      - name: Signatur und Notarisierung prüfen
+        run: |
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/PrepWell.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose "$APP"
+          lipo -archs "$APP/Contents/MacOS/prepwell-desktop"
+
+      - name: Release-Dateien zusammenstellen
+        run: node scripts/release-artefakte.mjs
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mac-build
-          path: out/*.dmg
-
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - name: Build & Package
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist:win
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: win-build
-          path: out/*.exe
+          path: out/*
 
   release:
     name: Create GitHub Release
-    needs: [build-mac, build-windows]
+    needs: [build-mac]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -85,5 +96,7 @@ jobs:
         with:
           files: artifacts/**/*
           generate_release_notes: true
-          draft: false
+          # Als Entwurf: Sobald das Release veröffentlicht ist, ziehen es alle installierten Apps per Auto-Update.
+          # Erst DMG prüfen, dann auf GitHub veröffentlichen.
+          draft: true
           prerelease: false

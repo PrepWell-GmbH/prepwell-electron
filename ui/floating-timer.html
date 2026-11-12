@@ -2,6 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src ipc: http://ipc.localhost" />
   <title>PrepWell Timer</title>
   <style>
     /* Look des Dashboard-FloatingWidget (frontend floating-widget.tsx):
@@ -12,7 +13,6 @@
     #card {
       position: absolute;
       inset: 10px;
-      -webkit-app-region: drag;
       background: #ffffff;
       border: 1px solid #E5E5E5;
       border-radius: 14px;
@@ -53,7 +53,6 @@
       text-overflow: ellipsis;
     }
     #close {
-      -webkit-app-region: no-drag;
       background: none;
       border: none;
       color: #737373;
@@ -69,7 +68,7 @@
   </style>
 </head>
 <body>
-  <div id="card">
+  <div id="card" data-ziehen>
     <div id="dot"></div>
     <div id="texts">
       <div id="text">Kein Timer aktiv</div>
@@ -78,8 +77,8 @@
     <button id="close" title="Schließen">✕</button>
   </div>
   <script>
-    document.getElementById('close').addEventListener('click', () => window.close());
-    // Wird vom Main-Prozess per executeJavaScript gefüttert (floating-timer.ts).
+    document.getElementById('close').addEventListener('click', () => window.prepwellTimer.schliessen());
+    // Wird von der Shell per eval gefüttert (schwebe.rs).
     window.__update = (s) => {
       const card = document.getElementById('card');
       const text = document.getElementById('text');

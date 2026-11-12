@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrepWell — Offline</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+      background: #fafafa;
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+      padding: 2rem;
+    }
+    .icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      font-size: 0.9rem;
+      color: #737373;
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+    }
+    button {
+      background: #E85A5A;
+      color: white;
+      border: none;
+      padding: 0.625rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #d14a4a; }
+    /* Drei Zustände am <body>: (nichts) = erste Sekunde, leer — kein Aufblitzen beim normalen Start;
+       „laedt" = Ladekreis, wenn es länger dauert; „offline" = Hinweis mit Knopf. */
+    .container { display: none; }
+    .offline .container { display: block; }
+    .kreis {
+      display: none;
+      width: 28px;
+      height: 28px;
+      border: 3px solid #e5e5e5;
+      border-top-color: #E85A5A;
+      border-radius: 50%;
+      animation: dreh 0.9s linear infinite;
+    }
+    .laedt .kreis { display: block; }
+    @keyframes dreh { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .kreis { animation-duration: 3s; } }
+  </style>
+</head>
+<body>
+  <div class="kreis" role="status" aria-label="PrepWell wird geladen"></div>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>Keine Internetverbindung</h1>
+    <p>PrepWell braucht eine Internetverbindung, um zu starten. Bitte prüfe deine Verbindung und versuche es erneut.</p>
+    <button id="nochmal">Erneut versuchen</button>
+  </div>
+  <script>
+    // Startseite des Hauptfensters: prüft, ob die Web-App erreichbar ist, und wechselt dann dorthin.
+    // Ohne Verbindung bleibt sie stehen und zeigt den Hinweis. Die Adresse setzt die Shell (haupt-bruecke.js).
+    const ziel = window.__PREPWELL_APP_URL;
+    const LADEKREIS_NACH = 800;   // ms — schneller Start bleibt ohne Flackern
+    const FRIST_PRUEFUNG = 12000; // ms — hängt die Verbindung, kommt der Hinweis statt einer leeren Seite
+    const FRIST_LADEN = 25000;    // ms — reißt die Verbindung beim Laden der App ab, ebenso
+    let versuch = 0;
+    const zeige = (zustand) => { document.body.className = zustand; };
+    async function verbinde() {
+      const dieser = ++versuch;
+      const aktuell = () => dieser === versuch;
+      zeige('');
+      setTimeout(() => { if (aktuell() && document.body.className === '') zeige('laedt'); }, LADEKREIS_NACH);
+      const abbruch = new AbortController();
+      const frist = setTimeout(() => abbruch.abort(), FRIST_PRUEFUNG);
+      try {
+        // HEAD genügt für die Erreichbarkeit — die Seite selbst lädt gleich das Fenster, nicht doppelt.
+        await fetch(ziel, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: abbruch.signal });
+        if (!aktuell()) return;
+        window.location.replace(ziel);
+        setTimeout(() => { if (aktuell()) zeige('offline'); }, FRIST_LADEN);
+      } catch (e) {
+        if (aktuell()) zeige('offline');
+      } finally {
+        clearTimeout(frist);
+      }
+    }
+    document.getElementById('nochmal').addEventListener('click', verbinde);
+    // Kommt das Netz zurück, lädt die App von selbst.
+    window.addEventListener('online', verbinde);
+    verbinde();
+  </script>
+</body>
+</html>

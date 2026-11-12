@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PrepWell",
+  "version": "../package.json",
+  "identifier": "de.prepwell.desktop",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "Education",
+    "copyright": "Copyright © 2026 PrepWell",
+    "icon": ["icons/icon.icns"],
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true,
+      "dmg": {
+        "appPosition": { "x": 130, "y": 220 },
+        "applicationFolderPosition": { "x": 410, "y": 220 }
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDAxQzAxQTZCQTg3Rjg4OUIKUldTYmlIK29heHJBQVRMNGFydGxOVWxESVoxQkZGd3VJeTByQ0dZb0hGVitCelJudXVuRTBLZVYK",
+      "endpoints": [
+        "https://github.com/PrepWell-GmbH/prepwell-electron/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
