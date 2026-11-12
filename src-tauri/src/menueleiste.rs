@@ -26,9 +26,11 @@ struct Zustand {
   stand: Option<TimerStand>,
   titel: String,
   zuletzt_versteckt: Option<Instant>,
+  /// Takte in Folge, in denen der Schwebe-Timer gesperrt war, obwohl dieses Fenster zu ist.
+  sperre_ohne_fenster: u8,
 }
 
-static ZUSTAND: Mutex<Zustand> = Mutex::new(Zustand { stand: None, titel: String::new(), zuletzt_versteckt: None });
+static ZUSTAND: Mutex<Zustand> = Mutex::new(Zustand { stand: None, titel: String::new(), zuletzt_versteckt: None, sperre_ohne_fenster: 0 });
 
 /// Letzter gelesener Timer-Stand (für das frisch geöffnete Fenster).
 pub fn stand() -> TimerStand {
@@ -139,8 +141,19 @@ pub fn auf_stand(app: &AppHandle, neu: &TimerStand) {
       let _ = tray.set_title(Some(neuer_titel));
     }
   }
-  if let Some(fenster) = fenster(app).filter(sichtbar) {
-    fenster::sende(&fenster, neu);
+  let offen = fenster(app).filter(sichtbar);
+  if let Some(fenster) = &offen {
+    fenster::sende(fenster, neu);
+  }
+  // Blendet macOS das Fenster selbst aus (App ausgeblendet, Space-Wechsel), läuft `verstecken` nicht und die Sperre
+  // des Schwebe-Timers bliebe für immer. Zwei Takte Geduld, weil das Fenster beim Öffnen kurz „gesperrt, noch zu" ist.
+  let loesen = {
+    let mut zustand = ZUSTAND.lock().unwrap();
+    zustand.sperre_ohne_fenster = if offen.is_none() && schwebe::gesperrt() { zustand.sperre_ohne_fenster + 1 } else { 0 };
+    zustand.sperre_ohne_fenster >= 2
+  };
+  if loesen {
+    schwebe::sperre(app, false);
   }
 }
 

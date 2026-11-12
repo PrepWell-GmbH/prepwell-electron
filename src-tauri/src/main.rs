@@ -52,6 +52,7 @@ fn main() {
       fenster::timer_fenster_hoehe,
       fenster::timer_fenster_schliessen,
       fenster::fenster_ziehen,
+      fenster::fenster_zoomen,
     ])
     .on_menu_event(haupt::menue_ereignis)
     .setup(|app| {

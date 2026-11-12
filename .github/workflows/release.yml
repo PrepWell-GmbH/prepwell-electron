@@ -16,6 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Die Download-Adressen in latest.json und latest-mac.yml entstehen aus der Version in package.json,
+      # das Release hängt am Tag. Weichen beide ab, laufen die Updater ins Leere.
+      - name: Tag und Version müssen übereinstimmen
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME passt nicht zur Version $version in package.json"
+            exit 1
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22

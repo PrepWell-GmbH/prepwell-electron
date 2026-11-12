@@ -223,3 +223,45 @@ pub fn kuerzel_von(titel: &str) -> Option<String> {
     None
   }
 }
+
+/// Welche Ansicht bekäme einen Mausklick an dieser Stelle des Fensters, und zieht ein Klick dort das Fenster?
+/// `x` von links, `von_oben` von der Oberkante, in Punkten. Für den Prüfstand: zeigt ohne Maus und Bildschirm,
+/// wie hoch der ziehbare Streifen der Titelleiste ist und ab wo Klicks die Web-App erreichen.
+#[cfg(debug_assertions)]
+pub fn treffer(fenster: &WebviewWindow, x: f64, von_oben: f64) {
+  #[repr(C)]
+  #[derive(Clone, Copy)]
+  struct Punkt(f64, f64);
+  #[repr(C)]
+  #[derive(Clone, Copy)]
+  struct Rechteck(Punkt, Punkt);
+  unsafe impl objc2::Encode for Punkt {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct("CGPoint", &[f64::ENCODING, f64::ENCODING]);
+  }
+  unsafe impl objc2::Encode for Rechteck {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct(
+      "CGRect",
+      &[Punkt::ENCODING, objc2::Encoding::Struct("CGSize", &[f64::ENCODING, f64::ENCODING])],
+    );
+  }
+  mit_ns_window(fenster, move |ns_window| unsafe {
+    let inhalt: *mut AnyObject = msg_send![ns_window, contentView];
+    let rahmen: *mut AnyObject = msg_send![inhalt, superview];
+    if rahmen.is_null() {
+      return;
+    }
+    let flaeche: Rechteck = msg_send![rahmen, frame];
+    // Je nach macOS-Version zählt der Fensterrahmen von oben oder von unten.
+    let gespiegelt: bool = msg_send![rahmen, isFlipped];
+    let y = if gespiegelt { von_oben } else { flaeche.1 .1 - von_oben };
+    let ansicht: *mut AnyObject = msg_send![rahmen, hitTest: Punkt(x, y)];
+    if ansicht.is_null() {
+      println!("[Prüfstand] treffer x={x} von_oben={von_oben}: keine Ansicht");
+      return;
+    }
+    let name: *mut AnyObject = msg_send![ansicht, className];
+    let zeichen: *const c_char = msg_send![name, UTF8String];
+    let zieht: bool = msg_send![ansicht, mouseDownCanMoveWindow];
+    println!("[Prüfstand] treffer x={x} von_oben={von_oben}: {} zieht_fenster={zieht}", CStr::from_ptr(zeichen).to_string_lossy());
+  });
+}

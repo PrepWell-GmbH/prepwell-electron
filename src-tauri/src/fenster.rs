@@ -75,6 +75,12 @@ pub async fn timer_befehl(app: AppHandle, befehl: Value) -> &'static str {
   let Some(befehl) = befehl.as_str() else {
     return "ungueltig";
   };
+  // Hauptfenster geschlossen (am Mac lebt die App weiter): es gibt keine Web-App, die den Befehl ausführen könnte.
+  // Statt eines Knopfs ohne Wirkung öffnet sich PrepWell.
+  if haupt::fenster(&app).is_none() {
+    haupt::hole_app_nach_vorn(&app);
+    return "app";
+  }
   let ergebnis = bruecke::sende_befehl(&app, befehl).await;
   if ergebnis == "app" {
     haupt::hole_app_nach_vorn(&app);
@@ -116,7 +122,17 @@ pub fn timer_fenster_schliessen(app: AppHandle, window: WebviewWindow) {
   }
 }
 
-/// Die Karte wird mit der Maus gezogen (Ersatz für `-webkit-app-region: drag`).
+/// Doppelklick auf die Titelleiste des Hauptfensters: vergrößern bzw. zurück (haupt-bruecke.js).
+#[tauri::command]
+pub fn fenster_zoomen(window: WebviewWindow) {
+  if window.label() != haupt::LABEL {
+    return;
+  }
+  let _ = if window.is_maximized().unwrap_or(false) { window.unmaximize() } else { window.maximize() };
+}
+
+/// Das Fenster wird mit der Maus gezogen (Ersatz für `-webkit-app-region: drag`): die Karten der kleinen Fenster
+/// und der Titelleisten-Streifen des Hauptfensters.
 #[tauri::command]
 pub fn fenster_ziehen(window: WebviewWindow) {
   let _ = window.start_dragging();

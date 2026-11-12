@@ -53,6 +53,14 @@ fn fuehre_aus(app: &AppHandle, zeile: &str) {
       let titel = rest.to_owned();
       let _ = app.run_on_main_thread(move || println!("{LOG} kuerzel {titel}: {:?}", crate::mac::kuerzel_von(&titel)));
     }
+    // `treffer <x> <von_oben>`: welche Ansicht des Hauptfensters bekäme dort einen Klick?
+    #[cfg(target_os = "macos")]
+    "treffer" => {
+      let mut zahlen = rest.split_whitespace().filter_map(|z| z.parse::<f64>().ok());
+      if let (Some(x), Some(von_oben), Some(fenster)) = (zahlen.next(), zahlen.next(), haupt::fenster(app)) {
+        crate::mac::treffer(&fenster, x, von_oben);
+      }
+    }
     "menueleiste" => {
       let handle = app.clone();
       let _ = app.run_on_main_thread(move || menueleiste::umschalten(&handle, None));

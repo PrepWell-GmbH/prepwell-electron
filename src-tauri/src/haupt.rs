@@ -28,7 +28,8 @@ const PLATTFORM: &str = if cfg!(target_os = "macos") { "darwin" } else { "linux"
 const HAUPT_BRUECKE: &str = include_str!("../js/haupt-bruecke.js");
 
 /// Die Befehle, die die Web-App rufen darf — dieselben wie in capabilities/haupt.json.
-const RECHTE_DER_WEB_APP: [&str; 4] = ["allow-open-external", "allow-update-ui-ready", "allow-get-pending-update", "allow-install-update"];
+const RECHTE_DER_WEB_APP: [&str; 6] =
+  ["allow-open-external", "allow-update-ui-ready", "allow-get-pending-update", "allow-install-update", "allow-fenster-ziehen", "allow-fenster-zoomen"];
 
 /// Adresse der Web-App.
 ///
@@ -147,10 +148,17 @@ pub fn erlaube_dev_adresse(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn erzeuge_fenster(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+  erzeuge_fenster_auf(app, None)
+}
+
+/// Wie `erzeuge_fenster`, aber mit einer Seite der Web-App als erster Adresse statt der Startseite
+/// (Rückkehr aus der Anmeldung im Browser, anmeldung.rs).
+pub fn erzeuge_fenster_auf(app: &AppHandle, erste_adresse: Option<Url>) -> tauri::Result<WebviewWindow> {
   let (wache, neue_fenster) = (app.clone(), app.clone());
+  let start = erste_adresse.filter(ist_app_herkunft).map_or_else(|| WebviewUrl::App("offline.html".into()), WebviewUrl::External);
   // Die Startseite (ui/offline.html) prüft die Verbindung und wechselt dann zur Web-App;
   // ohne Netz bleibt sie stehen und zeigt den Offline-Hinweis.
-  let bauer = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("offline.html".into()))
+  let bauer = WebviewWindowBuilder::new(app, LABEL, start)
     .title("PrepWell")
     .inner_size(1200.0, 800.0)
     .min_inner_size(800.0, 600.0);

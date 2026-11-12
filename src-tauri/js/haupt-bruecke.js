@@ -32,6 +32,27 @@
     }
   } catch (e) { /* ohne Geolocation gibt es nichts abzuweisen */ }
 
+  // Fenster ziehen (nur macOS): Die Titelleiste liegt durchsichtig über der Web-App, das Fenster hat damit von sich
+  // aus keinen Griff mehr. Electron kannte dafür `-webkit-app-region: drag`, WKWebView nicht. Deshalb gilt der
+  // oberste Streifen als Titelleiste: Ziehen verschiebt das Fenster, Doppelklick vergrößert es — außer auf allem,
+  // was selbst klickbar ist (Links, Knöpfe, Eingaben, Elemente mit Zeiger-Cursor).
+  if ('__PLATTFORM__' === 'darwin') {
+    const LEISTE = 32; // px ab Oberkante
+    const KLICKBAR = 'a, button, input, textarea, select, option, label, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [contenteditable], [draggable="true"]';
+    const ist_griff = (ereignis) => {
+      if (ereignis.button !== 0 || ereignis.clientY > LEISTE) return false;
+      const ziel = ereignis.target instanceof Element ? ereignis.target : null;
+      if (!ziel) return true;
+      if (ziel.closest(KLICKBAR)) return false;
+      try { return getComputedStyle(ziel).cursor !== 'pointer'; } catch (e) { return true; }
+    };
+    window.addEventListener('mousedown', (ereignis) => {
+      if (!ist_griff(ereignis)) return;
+      // Der zweite Klick eines Doppelklicks vergrößert, statt zu ziehen.
+      invoke(ereignis.detail === 2 ? 'fenster_zoomen' : 'fenster_ziehen').catch(() => undefined);
+    }, true);
+  }
+
   const api = {
     /** Immer true — daran erkennt die Web-App die Desktop-App. */
     isElectron: true,

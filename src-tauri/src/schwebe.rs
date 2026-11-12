@@ -38,12 +38,26 @@ struct Zustand {
   gesperrt: bool,
   /// Inaktiv-Lesungen in Folge, seit die Karte offen ist.
   inaktiv_gelesen: u32,
+  /// Von Hand geöffnet (Dev-Menü, Prüfstand): die Automatik schließt die Karte dann nicht.
+  erzwungen: bool,
 }
 
-static ZUSTAND: Mutex<Zustand> = Mutex::new(Zustand { gesperrt: false, inaktiv_gelesen: 0 });
+static ZUSTAND: Mutex<Zustand> = Mutex::new(Zustand { gesperrt: false, inaktiv_gelesen: 0, erzwungen: false });
 
-fn gesperrt() -> bool {
+pub fn gesperrt() -> bool {
   ZUSTAND.lock().unwrap().gesperrt
+}
+
+/// Gehört die Karte gerade NICHT auf den Bildschirm? Ja, wenn das Menüleisten-Fenster offen ist oder PrepWell vorn.
+/// Geprüft wird das an jeder Stelle, an der die Karte sichtbar wird oder bleibt: Zwischen „öffnen" und „zeigen"
+/// liegt Zeit (Seite lädt, Stand wird gelesen), in der der Nutzer längst zurück sein kann — das Fokus-Ereignis
+/// fände dann noch nichts zum Schließen.
+fn fehl_am_platz(app: &AppHandle) -> bool {
+  let (gesperrt, erzwungen) = {
+    let zustand = ZUSTAND.lock().unwrap();
+    (zustand.gesperrt, zustand.erzwungen)
+  };
+  !erzwungen && (gesperrt || haupt::fenster(app).is_some_and(|f| f.is_focused().unwrap_or(false)))
 }
 
 fn fenster(app: &AppHandle) -> Option<WebviewWindow> {
@@ -87,7 +101,9 @@ fn erzeuge(app: &AppHandle) -> tauri::Result<WebviewWindow> {
       }
       let lesung = bruecke::lesen(&handle).await;
       schiebe(&fenster, &lesung.schwebe, &lesung.stand);
-      mac::zeige_inaktiv(&fenster);
+      if !fehl_am_platz(&handle) {
+        mac::zeige_inaktiv(&fenster);
+      }
     });
   })?;
   setze_an_platz(app, &fenster);
@@ -125,7 +141,11 @@ pub async fn oeffnen(app: AppHandle, force: bool) {
     schiebe(&fenster, stand, &lesung.stand);
     return;
   }
-  ZUSTAND.lock().unwrap().inaktiv_gelesen = 0;
+  {
+    let mut zustand = ZUSTAND.lock().unwrap();
+    zustand.inaktiv_gelesen = 0;
+    zustand.erzwungen = force;
+  }
   match fenster(&app) {
     // Schon einmal erzeugt: frischen Stand hinein, an den Platz setzen, zeigen.
     Some(fenster) => {
@@ -169,10 +189,16 @@ pub fn sperre(app: &AppHandle, an: bool) {
 /// Sekundentakt der Brücke: hält die offene Karte aktuell.
 pub fn auf_takt(app: &AppHandle, stand: &SchwebeStand) {
   let Some(fenster) = offen(app) else { return };
+  // Sicherheitsnetz: steht die Karte, obwohl PrepWell vorn oder das Menüleisten-Fenster offen ist, geht sie jetzt zu.
+  if fehl_am_platz(app) {
+    schliessen(app);
+    return;
+  }
   // Hysterese: Während Navigation/Neuladen im Hauptfenster fehlt der Hook kurz und die Lesung meldet "inaktiv".
   // Erst drei Inaktiv-Lesungen in Folge schalten die Karte auf Leerlauf — sonst flackert sie mitten in der
-  // Sitzung auf "Kein Timer aktiv".
-  {
+  // Sitzung auf "Kein Timer aktiv". Die Menüleisten-Karte (Linux) zeigt wie am Mac sofort den gelesenen Stand:
+  // nach „Beenden" stünden sonst noch Sekunden lang Restzeit und Knöpfe eines Timers da, den es nicht mehr gibt.
+  if !WIE_MENUELEISTE {
     let mut zustand = ZUSTAND.lock().unwrap();
     if stand.active {
       zustand.inaktiv_gelesen = 0;

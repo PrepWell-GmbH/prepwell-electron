@@ -15,6 +15,8 @@ fn main() {
       "timer_fenster_hoehe",
       "timer_fenster_schliessen",
       "fenster_ziehen",
+      // Hauptfenster: Doppelklick auf die Titelleiste (haupt-bruecke.js)
+      "fenster_zoomen",
     ]),
   ))
   .expect("tauri-build fehlgeschlagen");

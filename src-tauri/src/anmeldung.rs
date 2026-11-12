@@ -57,12 +57,8 @@ pub fn ist_start(url: &Url) -> bool {
 
 /// Verlegt die Anmeldung in den Browser. `false` heißt: hat nicht geklappt, im Fenster weitermachen.
 pub fn starte(app: &AppHandle, start: &Url) -> bool {
-  {
-    let mut zuletzt = ZULETZT.lock().unwrap();
-    if zuletzt.as_ref().is_some_and(|(wann, adresse)| wann.elapsed() < DOPPELKLICK && adresse == start.as_str()) {
-      return true;
-    }
-    *zuletzt = Some((Instant::now(), start.as_str().to_owned()));
+  if ZULETZT.lock().unwrap().as_ref().is_some_and(|(wann, adresse)| wann.elapsed() < DOPPELKLICK && adresse == start.as_str()) {
+    return true;
   }
 
   // Wohin die Web-App zurückkehren wollte — nur ihre eigene Herkunft zählt, sonst die übliche Rückkehr-Route.
@@ -93,6 +89,8 @@ pub fn starte(app: &AppHandle, start: &Url) -> bool {
     return false;
   }
 
+  // Erst jetzt merken: scheitert der Start, muss auch die zweite Anfrage im Fenster weiterlaufen dürfen.
+  *ZULETZT.lock().unwrap() = Some((Instant::now(), start.as_str().to_owned()));
   // Nur Dev: die Rückkehr-Adresse für den Prüfstand (sie enthält das Geheimnis, gehört also in kein Release-Log).
   if crate::IS_DEV {
     println!("{LOG} im Browser geöffnet, Rückkehr auf http://127.0.0.1:{port}/{geheim}");
@@ -219,20 +217,25 @@ fn bediene(mut strom: TcpStream, app: &AppHandle, port: u16, geheim: &str, ziel:
 fn rueckkehr_adresse(ziel: &Url, angaben: &str) -> Url {
   let (suche, fragment) = angaben.split_once('#').unwrap_or((angaben, ""));
   let mut adresse = ziel.clone();
-  adresse.set_query(suche.strip_prefix('?').filter(|s| !s.is_empty()));
+  // Eine Query, die die Web-App ihrer Rückkehr-Adresse selbst mitgegeben hat, bleibt erhalten.
+  let suche = [ziel.query().unwrap_or_default(), suche.strip_prefix('?').unwrap_or(suche)].into_iter().filter(|teil| !teil.is_empty()).collect::<Vec<_>>().join("&");
+  adresse.set_query(Some(suche.as_str()).filter(|s| !s.is_empty()));
   adresse.set_fragment(Some(fragment).filter(|f| !f.is_empty()));
   adresse
 }
 
 fn uebergib(app: &AppHandle, ziel: &Url, angaben: &str) {
   let adresse = rueckkehr_adresse(ziel, angaben);
-  // Erst nach vorn (erzeugt das Hauptfenster, falls es geschlossen wurde), dann die Rückkehr-Route laden.
-  haupt::hole_app_nach_vorn(app);
-  match haupt::fenster(app).map(|fenster| fenster.navigate(adresse)) {
-    Some(Ok(())) => {}
-    Some(Err(fehler)) => eprintln!("{LOG} Rückkehr ließ sich nicht laden: {fehler}"),
-    None => eprintln!("{LOG} kein Hauptfenster für die Rückkehr"),
+  let geladen = match haupt::fenster(app) {
+    Some(fenster) => fenster.navigate(adresse),
+    // Hauptfenster inzwischen geschlossen: das neue startet gleich auf der Rückkehr-Route. Über die Startseite
+    // (offline.html) ginge die Sitzung verloren — deren Weiterleitung zur App überholt die Rückkehr.
+    None => haupt::erzeuge_fenster_auf(app, Some(adresse)).map(|_| ()),
+  };
+  if let Err(fehler) = geladen {
+    eprintln!("{LOG} Rückkehr ließ sich nicht laden: {fehler}");
   }
+  haupt::hole_app_nach_vorn(app);
 }
 
 #[cfg(test)]
@@ -254,5 +257,8 @@ mod tests {
     assert_eq!(rueckkehr_adresse(&ziel, "#access_token=a.b.c&refresh_token=r&token_type=bearer").as_str(), "https://app.prepwell.de/auth/oauth#access_token=a.b.c&refresh_token=r&token_type=bearer");
     assert_eq!(rueckkehr_adresse(&ziel, "?error=access_denied&error_description=x#error=access_denied").as_str(), "https://app.prepwell.de/auth/oauth?error=access_denied&error_description=x#error=access_denied");
     assert_eq!(rueckkehr_adresse(&ziel, "").as_str(), "https://app.prepwell.de/auth/oauth");
+    let mit_query = Url::parse("https://app.prepwell.de/auth/oauth?next=%2Flernplan").unwrap();
+    assert_eq!(rueckkehr_adresse(&mit_query, "#access_token=a").as_str(), "https://app.prepwell.de/auth/oauth?next=%2Flernplan#access_token=a");
+    assert_eq!(rueckkehr_adresse(&mit_query, "?error=x").as_str(), "https://app.prepwell.de/auth/oauth?next=%2Flernplan&error=x");
   }
 }
