@@ -6,7 +6,6 @@
       "Bash(git commit -m ':*)",
       "Bash(git remote:*)",
       "Bash(git push:*)",
-      "Bash(npx tsc *)",
       "Bash(echo \"--- exit: $? ---\")",
       "Bash(npm run *)"
     ]
